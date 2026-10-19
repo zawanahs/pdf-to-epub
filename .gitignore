@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*.epub
+*.pdf
+.DS_Store
+Thumbs.db
+desktop.ini
+__MACOSX/

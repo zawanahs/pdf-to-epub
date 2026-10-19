@@ -1,0 +1,14 @@
+{
+  "name": "pdf-to-epub",
+  "displayName": "PDF to EPUB",
+  "version": "1.0.0",
+  "description": "Convert PDFs into reflowable EPUB ebooks for Kindle and other e-readers: cleans headers/footers, rejoins paragraphs, orders two-column layouts, builds chapters and a TOC, and keeps figures, tables and equations. Runs fully offline.",
+  "author": {
+    "name": "Zawanah",
+    "url": "https://github.com/zawanahs"
+  },
+  "homepage": "https://github.com/zawanahs/pdf-to-epub",
+  "repository": "https://github.com/zawanahs/pdf-to-epub",
+  "license": "AGPL-3.0-or-later",
+  "keywords": ["pdf", "epub", "ebook", "kindle", "e-reader", "convert", "reading"]
+}
