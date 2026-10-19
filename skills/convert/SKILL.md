@@ -30,7 +30,8 @@ Use `python3` on macOS/Linux and `python` on Windows. The examples below say `py
    ```
 
 4. **Read the report** the script prints and fix what looks off:
-   - `title` / `author`: these come from PDF metadata, falling back to the largest text on page 1.
+   - `title` / `author`: these come from PDF metadata, then a title page in the first pages, then a
+     `Title -- Author -- Publisher, Year` filename, then the largest text on page 1.
      If the author is `Unknown` or the title is wrong, inspect the PDF:
      `python ${CLAUDE_PLUGIN_ROOT}/scripts/pdf_to_epub.py --peek "file.pdf"`
      Then re-run with `--title "..." --author "..."`.
@@ -71,12 +72,14 @@ Use `python3` on macOS/Linux and `python` on Windows. The examples below say `py
 - **Clean-up:** strips running headers, footers and page numbers, including page numbers drawn
   with private-use glyphs, and drops rotated margin text such as arXiv stamps.
 - **Hyphenation:** rejoins words hyphenated at line ends, keeping real compounds that appear
-  hyphenated elsewhere in the document.
+  hyphenated elsewhere in the document and the middle of chains like "local-to-global".
 - **Split paragraphs:** rejoins paragraphs split across pages, columns and blocks, looking past
   interrupting footnotes and figures.
 - **Two-column layouts:** reads them in the correct order.
 - **Chapters:** uses PDF bookmarks when present, otherwise headings detected by font size and
   bold. Also handles drop caps and "Chapter 1" + title pairs.
+- **Footnote markers:** small reference numbers become superscripts on the word they follow,
+  even when the PDF stores them as separate text blocks.
 - **Inline formatting:** keeps italic, bold, superscripts and monospace, and turns monospace
   blocks into `<pre>`.
 - **Images:** keeps photos and skips logos repeated on every page. Vector figures, display

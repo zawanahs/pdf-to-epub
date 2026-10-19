@@ -39,7 +39,7 @@ except ImportError:  # older PyMuPDF
     except ImportError:
         sys.exit("PyMuPDF is required: pip install pymupdf")
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 TEXT_FLAGS =fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP
 TERMINAL = set(".!?:;…\"”’')]»")
@@ -51,6 +51,10 @@ MATH_CHARS = set("=+−×·∑∏∫√∂∇≤≥≈≠∈∉⊂⊆"
                  "∪∩→←↔∞αβγδεζηθικ"
                  "λμνξπρστυφχψωΓΔΘ"
                  "ΛΞΠΣΦΨΩ")
+NOTE_MARK_RE = re.compile(r"^[\d*†‡§¶]{1,4}$")  # footnote reference markers
+NAME_RE = re.compile(r"(?:(?:[A-Z][a-z'’-]+|[A-Z]\.)\s){1,3}[A-Z][a-z'’-]+")
+GENERIC_TITLES = {"contents", "tableofcontents", "copyright", "index", "preface", "foreword",
+                  "introduction", "abouttheauthor", "aboutthebook", "titlepage", "cover", "dedication"}
 MAX_IMG_PX = 1400
 HYPHENATED = set()  # words seen with an in-line hyphen, e.g. "sequence-aligned"
 
@@ -106,9 +110,55 @@ def clean_title(t, fallback):
     t = (t or "").strip()
     t = re.sub(r"^Microsoft (Word|PowerPoint) - ", "", t)
     t = re.sub(r"\.(docx?|pptx?|pdf|tex|indd|odt)$", "", t, flags=re.I)
-    if not t or t.lower() in {"untitled", "title", "unknown"} or re.fullmatch(r"[\w-]+\.\w+", t):
+    if (not t or t.lower() in {"untitled", "title", "unknown"} or norm_key(t) in GENERIC_TITLES
+            or re.fullmatch(r"[\w-]+\.\w+", t)):
         return fallback
     return t
+
+
+def title_from_filename(stem):
+    """'Title_ Subtitle -- Author -- Publisher, Year' (shadow-library naming) -> (title, author)."""
+    parts = [p.strip() for p in stem.split(" -- ")]
+    if len(parts) < 2 or not parts[0] or not parts[1]:
+        return None, None
+    title = re.sub(r"_ ", ": ", parts[0]).replace("_", " ").strip()
+    author = re.sub(r"\s*;\s*", ", ", parts[1])
+    return title, author
+
+
+def smart_case(t):
+    if t.upper() != t or not re.search(r"[A-Z]", t):
+        return t
+    small = {"a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with"}
+    words = t.lower().split()
+    return " ".join(w if i and w in small else w[:1].upper() + w[1:] for i, w in enumerate(words))
+
+
+def title_page(doc, pages):
+    """(title, author) from a sparse title page among the first pages, if one exists."""
+    for pno in pages[:12]:
+        page = doc[pno]
+        if not 10 <= len(page.get_text("text").strip()) <= 400:
+            continue
+        lines = []
+        for b in page.get_text("dict", flags=TEXT_FLAGS)["blocks"]:
+            for l in b.get("lines", []):
+                t = re.sub(r"\s+", " ", "".join(s["text"] for s in l["spans"])).strip()
+                if t and abs(l.get("dir", (1, 0))[1]) <= 0.1:
+                    lines.append((max(s["size"] for s in l["spans"]), t))
+        if not 2 <= len(lines) <= 8:
+            continue
+        top = max(sz for sz, _ in lines)
+        if top < 1.4 * min(sz for sz, _ in lines) and top < 20:
+            continue  # nothing stands out: an epigraph or a short note, not a title page
+        title = " ".join(t for sz, t in lines if sz >= top * 0.95)
+        rest = [(sz, t) for sz, t in lines if sz < top * 0.95]
+        sub = rest[0][1] if rest and rest[0][0] >= top * 0.5 and not NAME_RE.fullmatch(rest[0][1]) else None
+        author = next((t for _, t in rest if NAME_RE.fullmatch(t)), None)
+        title = smart_case(title) + (": " + smart_case(sub) if sub else "")
+        if 3 <= len(title) <= 200 and norm_key(title) not in GENERIC_TITLES:
+            return title, author
+    return None, None
 
 
 def guess_title(doc, pages):
@@ -130,6 +180,8 @@ def guess_title(doc, pages):
         if top < body * 1.3:
             return None
         t = re.sub(r"\s+", " ", " ".join(tx for sz, tx in spans if sz == top)).strip()
+        if norm_key(t) in GENERIC_TITLES:
+            continue
         return t if 3 <= len(t) <= 150 else None
     return None
 
@@ -146,6 +198,64 @@ def span_style(span):
 
 # --------------------------------------------------------------------------
 # pass 1: raw page extraction
+
+def attach_note_markers(blocks):
+    """Footnote markers set in a small font become superscripts. A marker the PDF
+    stores as its own block is moved into the line it sits on."""
+    def raised(s, line):
+        size = max(x["size"] for x in line["spans"])
+        return (NOTE_MARK_RE.match(s["text"].strip()) and s["size"] <= 0.75 * size
+                and (s["bbox"][1] + s["bbox"][3]) / 2 < (line["bbox"].y0 + line["bbox"].y1) / 2)
+
+    for b in blocks:
+        for l in b["lines"]:
+            for s in l["spans"]:
+                if raised(s, l):
+                    s["flags"] = s.get("flags", 0) | 1
+    # a marker that starts a line ('¹ A decade later') belongs to the line ending just before it
+    for b in blocks:
+        for l in b["lines"]:
+            s = l["spans"][0]
+            if len(l["spans"]) < 2 or not s.get("flags", 0) & 1 or not NOTE_MARK_RE.match(s["text"].strip()):
+                continue
+            m = fitz.Rect(s["bbox"])
+            host = next((x for o in blocks for x in o["lines"] if x is not l
+                         and abs(x["bbox"].x1 - m.x0) < 3 and x["bbox"].y0 - 2 <= m.y0 <= x["bbox"].y1), None)
+            if host:
+                host["spans"].append(l["spans"].pop(0))
+                host["bbox"] = rect_union([host["bbox"], m])
+                l["bbox"] = rect_union(fitz.Rect(x["bbox"]) for x in l["spans"])
+    for b in blocks:
+        b["bbox"] = rect_union(l["bbox"] for l in b["lines"])
+        b["text"] = " ".join("".join(s["text"] for s in l["spans"]).strip() for l in b["lines"])
+    kept = []
+    for b in blocks:
+        if len(b["lines"]) == 1 and NOTE_MARK_RE.match(b["text"]):
+            m, mspan = b["bbox"], b["lines"][0]["spans"]
+            best = None
+            for o in blocks:
+                if o is b:
+                    continue
+                for l in o["lines"]:
+                    r = l["bbox"]
+                    if (r.y0 - 2 <= m.y0 and m.y1 <= r.y1 + 1 and r.x0 - 2 <= m.x0 <= r.x1 + 0.6 * r.height
+                            and all(raised(s, {"spans": l["spans"] + [s], "bbox": rect_union([r, m])}) for s in mspan)):
+                        d = abs(m.x0 - r.x1)
+                        if best is None or d < best[0]:
+                            best = (d, o, l)
+            if best:
+                _, o, l = best
+                for s in mspan:
+                    s["flags"] = s.get("flags", 0) | 1
+                at = sum(1 for s in l["spans"] if s["bbox"][0] < m.x0)
+                l["spans"][at:at] = mspan
+                l["bbox"] = rect_union([l["bbox"], m])
+                o["bbox"] = rect_union([o["bbox"], m])
+                o["text"] = " ".join("".join(s["text"] for s in x["spans"]).strip() for x in o["lines"])
+                continue
+        kept.append(b)
+    return kept
+
 
 def extract_page(page, want_figures=True, want_tables=True):
     W, H = page.rect.width, page.rect.height
@@ -170,6 +280,7 @@ def extract_page(page, want_figures=True, want_tables=True):
                 "lines": lines,
                 "text": " ".join("".join(s["text"] for s in l["spans"]).strip() for l in lines),
             })
+    blocks = attach_note_markers(blocks)
 
     images = []
     for info in page.get_image_info(hashes=True):
@@ -298,9 +409,11 @@ def append_runs(runs, new_runs):
         if last[0].endswith("­"):
             last[0] = last[0][:-1]
         elif re.search(r"[^\W\d_]-$", last[0]) and nxt[:1].islower():
-            a = re.search(r"([^\W\d_]+)-$", last[0]).group(1).lower()
+            m = re.search(r"(-?)([^\W\d_]+)-$", last[0])
+            a = m.group(2).lower()
             b = re.match(r"[^\W\d_]+", nxt)
-            if not (b and f"{a}-{b.group(0).lower()}" in HYPHENATED):
+            # keep the hyphen in known compounds, and mid-chain ("local-to-" + "global")
+            if not (m.group(1) or (b and f"{a}-{b.group(0).lower()}" in HYPHENATED)):
                 last[0] = last[0][:-1]
         elif last[0] and not last[0].endswith(("/", "—")):
             last[0] += " "
@@ -463,7 +576,9 @@ def build_reflow(doc, pages, opts, log):
         kept = [b for b in r["blocks"] if id(b) not in drop]
         r["blocks"] = kept
         for b in kept:
-            HYPHENATED.update(re.findall(r"[^\W\d_]+-[^\W\d_]+", b["text"].lower()))
+            for chain in re.findall(r"[^\W\d_]+(?:-[^\W\d_]+)+", b["text"].lower()):
+                parts = chain.split("-")
+                HYPHENATED.update(f"{x}-{y}" for x, y in zip(parts, parts[1:]))
 
     # repeated images (logos)
     digest_pages = Counter()
@@ -573,7 +688,13 @@ def build_reflow(doc, pages, opts, log):
         if (prev and p["kind"] == "text" and prev["kind"] == "text" and not is_float(p) and not is_float(prev)
                 and not prev["heading"] and not p["heading"] and not prev["mono_all"] and not p["mono_all"]
                 and abs(prev["size"] - p["size"]) <= body * 0.12 and not BULLET_RE.match(p["text"])):
-            pt, nt = prev["text"], p["text"]
+            nt = p["text"]
+            pt = prev["text"]
+            k = len(prev["runs"])
+            while k and (prev["runs"][k - 1][1][2] or not prev["runs"][k - 1][0].strip()):
+                k -= 1  # ignore trailing footnote markers: 'work.'¹ still ends a sentence
+            if k < len(prev["runs"]):
+                pt = re.sub(r"\s+", " ", "".join(r[0] for r in prev["runs"][:k])).strip()
             hyphen = bool(re.search(r"[^\W\d_]-$", pt)) and nt[:1].islower()
             tight = (p["page"] == prev["page"] and -2 < p["bbox"].y0 - prev["bbox"].y1 < 0.5 * p["size"]
                      and min(p["bbox"].x1, prev["bbox"].x1) > max(p["bbox"].x0, prev["bbox"].x0))
@@ -1035,8 +1156,13 @@ def main():
     if not pages:
         sys.exit("No pages selected")
     md = doc.metadata or {}
-    title = opts.title or clean_title(md.get("title"), guess_title(doc, pages) or src.stem.replace("_", " "))
-    author = opts.author or (md.get("author") or "").strip() or "Unknown"
+    fn_title, fn_author = title_from_filename(src.stem)
+    tp_title, tp_author = title_page(doc, pages)
+    if tp_title and fn_title and not norm_key(tp_title).startswith(norm_key(fn_title)):
+        tp_title = None  # the filename names the book; a title page that disagrees is something else
+    fallback = tp_title or fn_title or guess_title(doc, pages) or src.stem.replace("_", " ")
+    title = opts.title or clean_title(md.get("title"), fallback)
+    author = opts.author or (md.get("author") or "").strip() or fn_author or tp_author or "Unknown"
     out = Path(opts.output).expanduser().resolve() if opts.output else src.with_suffix(".epub")
 
     mode = opts.mode
