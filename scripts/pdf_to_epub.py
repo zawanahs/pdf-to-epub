@@ -40,7 +40,7 @@ except ImportError:  # older PyMuPDF
     except ImportError:
         sys.exit("PyMuPDF is required: pip install pymupdf")
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 TEXT_FLAGS =fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP
 TERMINAL = set(".!?:;…\"”’')]»")
@@ -194,7 +194,7 @@ def span_style(span):
     italic = bool(f & 2) or bool(re.search(r"italic|oblique", font, re.I))
     sup = bool(f & 1)
     mono = bool(f & 8) or bool(re.search(r"mono|courier|consol", font, re.I))
-    return (bold, italic, sup, mono)
+    return (bold, italic, sup, mono, bool(span.get("mark")))
 
 
 # --------------------------------------------------------------------------
@@ -258,11 +258,50 @@ def attach_note_markers(blocks):
     return kept
 
 
-def extract_page(page, want_figures=True, want_tables=True):
+def is_highlight_fill(dr, lines, annot_marks):
+    """A highlighter stroke flattened into the page: a fill-only, coloured or
+    translucent band a few text lines tall at most, lying over text."""
+    fill = dr.get("fill")
+    if dr.get("type") != "f" or not fill or len(fill) != 3:
+        return False
+    r = fitz.Rect(dr["rect"])
+    if any(frac_inside(r, m) > 0.5 for m in annot_marks):
+        return True  # the page copy of a Highlight annotation
+    if max(fill) - min(fill) < 0.15 and (dr.get("fill_opacity") or 1) >= 1:
+        return False  # grey/white/black: table shading, rules, masks
+    if not 4 <= r.height <= 80:
+        return False
+    return any(r.y0 <= (l["bbox"].y0 + l["bbox"].y1) / 2 <= r.y1 and l["bbox"].height >= min(0.4 * r.height, 8)
+               and min(r.x1, l["bbox"].x1) > max(r.x0, l["bbox"].x0) for l in lines)
+
+
+def mark_spans(spans, marks):
+    """Split rawdict spans where highlighting starts/stops; marked pieces get span['mark']."""
+    out = []
+    for s in spans:
+        chars = s.pop("chars", [])
+        if not marks or not chars:
+            out.append(s)
+            continue
+        groups = []
+        for c in chars:
+            r = fitz.Rect(c["bbox"])
+            on = any(m.contains(fitz.Point((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2)) for m in marks)
+            if groups and groups[-1][0] == on:
+                groups[-1][1].append(c)
+            else:
+                groups.append((on, [c]))
+        for on, cs in groups:
+            out.append(dict(s, text="".join(c["c"] for c in cs), mark=on,
+                            bbox=tuple(rect_union(fitz.Rect(c["bbox"]) for c in cs))))
+    return out
+
+
+def extract_page(page, want_figures=True, want_tables=True, want_highlights=True):
     W, H = page.rect.width, page.rect.height
     page_area = W * H
-    d = page.get_text("dict", flags=TEXT_FLAGS)
-    blocks = []
+    d = page.get_text("rawdict", flags=TEXT_FLAGS)
+    raw_blocks = []
     for b in d["blocks"]:
         if b.get("type") != 0:
             continue
@@ -271,16 +310,46 @@ def extract_page(page, want_figures=True, want_tables=True):
             dx, dy = ln.get("dir", (1, 0))
             if abs(dy) > 0.1 or dx < 0:  # rotated text: watermarks, margin stamps
                 continue
+            for s in ln["spans"]:
+                s["text"] = "".join(c["c"] for c in s.get("chars", []))
             spans = [s for s in ln["spans"] if s["text"]]
             if not spans or not "".join(s["text"] for s in spans).strip():
                 continue
             lines.append({"bbox": fitz.Rect(ln["bbox"]), "spans": spans})
         if lines:
-            blocks.append({
-                "bbox": rect_union(l["bbox"] for l in lines),
-                "lines": lines,
-                "text": " ".join("".join(s["text"] for s in l["spans"]).strip() for l in lines),
-            })
+            raw_blocks.append(lines)
+
+    # highlights: Highlight annotations, and highlighter fills flattened into
+    # the page (these must not be mistaken for vector figures)
+    drawings = []
+    if want_figures or want_tables or want_highlights:
+        try:
+            drawings = page.get_drawings()
+        except Exception:
+            drawings = []
+    annot_marks = []
+    try:
+        for a in page.annots(types=[fitz.PDF_ANNOT_HIGHLIGHT]):
+            v = a.vertices or []
+            quads = [fitz.Quad(v[i:i + 4]).rect for i in range(0, len(v) - 3, 4)]
+            annot_marks.extend(quads or [a.rect])
+    except Exception:
+        pass
+    all_lines = [l for lines in raw_blocks for l in lines]
+    hl_fills = [dr for dr in drawings if is_highlight_fill(dr, all_lines, annot_marks)]
+    drawings = [dr for dr in drawings if not any(dr is h for h in hl_fills)]
+    hl_rects = annot_marks + [fitz.Rect(dr["rect"]) for dr in hl_fills]
+    marks = hl_rects if want_highlights else []
+
+    blocks = []
+    for lines in raw_blocks:
+        for l in lines:
+            l["spans"] = mark_spans(l["spans"], marks)
+        blocks.append({
+            "bbox": rect_union(l["bbox"] for l in lines),
+            "lines": lines,
+            "text": " ".join("".join(s["text"] for s in l["spans"]).strip() for l in lines),
+        })
     blocks = attach_note_markers(blocks)
 
     images = []
@@ -291,17 +360,15 @@ def extract_page(page, want_figures=True, want_tables=True):
         images.append({"bbox": r, "digest": info.get("digest"), "width": info.get("width", 0)})
 
     tables, figures = [], []
-    drawings = []
-    if want_figures or want_tables:
-        try:
-            drawings = page.get_drawings()
-        except Exception:
-            drawings = []
     if want_tables and sum(1 for dr in drawings if dr.get("items")) >= 4:
         try:
             with contextlib.redirect_stdout(io.StringIO()):
                 found = page.find_tables().tables
             for t in found:
+                tb = fitz.Rect(t.bbox)
+                covered = sum((tb & m).width * (tb & m).height for m in hl_rects if tb.intersects(m))
+                if covered > 0.5 * tb.width * tb.height:
+                    continue  # highlight bands read as table cells
                 rows = t.extract()
                 if len(rows) >= 2 and max(len(r) for r in rows) >= 2:
                     tables.append({"bbox": fitz.Rect(t.bbox), "rows": rows})
@@ -534,11 +601,13 @@ def order_items(items, W):
 
 def build_reflow(doc, pages, opts, log):
     raw = {}
+    stats = Counter()
     for i, pno in enumerate(pages):
-        raw[pno] = extract_page(doc[pno], not opts.no_figures, not opts.no_tables)
+        raw[pno] = extract_page(doc[pno], not opts.no_figures, not opts.no_tables, not opts.no_highlights)
+        stats["highlighted_spans"] += sum(1 for b in raw[pno]["blocks"] for l in b["lines"]
+                                          for s in l["spans"] if s.get("mark"))
         if (i + 1) % 50 == 0:
             log(f"  extracted {i + 1}/{len(pages)} pages")
-    stats = Counter()
     stats["scanned_pages"] = sum(1 for r in raw.values() if r["scanned"])
 
     size_count = Counter()
@@ -632,7 +701,7 @@ def build_reflow(doc, pages, opts, log):
         nxt = items[i + 1] if i + 1 < len(items) else None
         if (p["kind"] == "text" and len(p["text"]) <= 2 and p["text"][:1].isalpha()
                 and p["size"] >= body * 1.5 and nxt and nxt["kind"] == "text"):
-            nxt["runs"].insert(0, [p["text"], (False, False, False, False)])
+            nxt["runs"].insert(0, [p["text"], (False, False, False, False, False)])
             nxt["text"] = p["text"] + nxt["text"]
             continue
         out.append(p)
@@ -720,7 +789,7 @@ def build_reflow(doc, pages, opts, log):
         if (prev and p["kind"] == "text" and prev["kind"] == "text" and p["heading"] and prev["heading"]
                 and p["page"] == prev["page"] and len(prev["text"]) + len(p["text"]) <= 200
                 and p["bbox"].y0 - prev["bbox"].y1 < 2.5 * max(p["size"], prev["size"])):
-            prev["runs"].append(["\n", (False, False, False, False)])
+            prev["runs"].append(["\n", (False, False, False, False, False)])
             prev["runs"].extend(p["runs"])
             prev["text"] = prev["text"] + ": " + p["text"] if not prev["text"].endswith(":") else prev["text"] + " " + p["text"]
             prev["heading"] = min(prev["heading"], p["heading"])
@@ -810,7 +879,7 @@ def runs_html(runs):
         t = esc(re.sub(r"\s+", " ", text))
         if not t:
             continue
-        bold, italic, sup, mono = style
+        bold, italic, sup, mono, mark = style
         lead = t[: len(t) - len(t.lstrip())]
         trail = t[len(t.rstrip()):]
         core = t.strip()
@@ -823,8 +892,11 @@ def runs_html(runs):
                 core = f"<em>{core}</em>"
             if bold:
                 core = f"<b>{core}</b>"
+            if mark:
+                core = f'<span class="hl">{core}</span>'
         out.append(lead + core + trail)
-    return re.sub(r"\s+", " ", "".join(out)).strip()
+    # one highlight across words, not one per styled piece
+    return re.sub(r"\s+", " ", re.sub(r'</span>(\s*)<span class="hl">', r"\1", "".join(out))).strip()
 
 
 class ImageStore:
@@ -967,6 +1039,7 @@ table { border-collapse: collapse; margin: 0.8em 0; font-size: 0.85em; }
 th, td { border: 1px solid #888; padding: 0.15em 0.35em; vertical-align: top; }
 pre { white-space: pre-wrap; font-size: 0.8em; margin: 0.6em 0; }
 sup { font-size: 0.7em; }
+span.hl { background-color: #fde96b; }
 """
 
 
@@ -1133,6 +1206,7 @@ def main():
     ap.add_argument("--cover", help="image file to use as cover instead of page 1")
     ap.add_argument("--no-figures", action="store_true", help="don't render vector drawings as images")
     ap.add_argument("--no-tables", action="store_true", help="don't detect tables")
+    ap.add_argument("--no-highlights", action="store_true", help="don't carry PDF highlights into the text")
     ap.add_argument("--ignore-outline", action="store_true", help="ignore PDF bookmarks; use detected headings")
     ap.add_argument("--grayscale", action="store_true", help="grayscale images (smaller file)")
     ap.add_argument("--dpi", type=int, default=150, help="page render DPI in image mode")

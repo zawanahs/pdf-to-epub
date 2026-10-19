@@ -17,6 +17,7 @@ images.
 - **Reading order:** two-column layouts, as in many papers, are read in the right order.
 - **Chapters and a table of contents**, taken from the PDF's bookmarks or from detected headings.
 - **Formatting:** italic, bold, superscripts and code are kept.
+- **Highlights:** passages you highlighted in the PDF stay highlighted in the EPUB.
 - **Images:** photos and figures are kept, logos repeated on every page are dropped, and
   display equations and tables are rendered as sharp images.
 - **A cover image**, rendered from the first page.

@@ -65,6 +65,7 @@ Use `python3` on macOS/Linux and `python` on Windows. The examples below say `py
 | `--ignore-outline` | Use detected headings instead of the PDF's bookmarks for chapters and TOC. |
 | `--no-figures` | Spurious images appear (decorative boxes rendered as figures). This also turns equation images off. |
 | `--no-tables` | Table detection mangles something. |
+| `--no-highlights` | The user doesn't want their PDF highlights carried over. |
 | `--grayscale`, `--dpi 120`, `--jpeg-quality 70` | Shrink large files. |
 | `--password` | The PDF is encrypted. |
 | `--peek` | Inspect a PDF (metadata, outline, first pages) or an EPUB (TOC, sample chapter) without converting. |
@@ -84,6 +85,9 @@ Use `python3` on macOS/Linux and `python` on Windows. The examples below say `py
   even when the PDF stores them as separate text blocks.
 - **Inline formatting:** keeps italic, bold, superscripts and monospace, and turns monospace
   blocks into `<pre>`.
+- **Highlights:** text highlighted in the PDF, whether as Highlight annotations or as
+  highlighter marks flattened into the page, is shaded in the EPUB instead of being mistaken
+  for a figure or a table.
 - **Images:** keeps photos and skips logos repeated on every page. Vector figures, display
   equations and booktabs-style tables are rendered as crisp images; ruled tables become HTML
   tables.
