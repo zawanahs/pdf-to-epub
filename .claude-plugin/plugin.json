@@ -10,5 +10,6 @@
   "homepage": "https://github.com/zawanahs/pdf-to-epub",
   "repository": "https://github.com/zawanahs/pdf-to-epub",
   "license": "AGPL-3.0-or-later",
+  "icon": "./.claude-plugin/icon.png",
   "keywords": ["pdf", "epub", "ebook", "kindle", "e-reader", "convert", "reading"]
 }

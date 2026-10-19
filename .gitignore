@@ -6,3 +6,4 @@ __pycache__/
 Thumbs.db
 desktop.ini
 __MACOSX/
+*.stackdump
