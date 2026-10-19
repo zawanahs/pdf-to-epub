@@ -1,15 +1,16 @@
 ---
 name: convert
-description: Convert PDF files into reflowable EPUB ebooks for Kindle (via Send to Kindle) and other e-readers, with chapters/TOC, cover, figures, tables and equations. Use when the user wants to read a PDF on a Kindle or e-reader, convert a PDF to EPUB, or make a PDF "Kindle-ready" (novels, books, papers, technical docs).
+description: Convert PDF files into reflowable EPUB ebooks for any e-reader (Kobo, Apple Books, Google Play Books, and Kindle via Send to Kindle), with chapters/TOC, cover, figures, tables and equations. Use when the user wants to convert a PDF to EPUB, read a PDF on an e-reader or Kindle, or make a PDF "Kindle-ready" (novels, books, papers, technical docs).
 argument-hint: "<file.pdf | folder> [options]"
 allowed-tools: Bash(python ${CLAUDE_PLUGIN_ROOT}/scripts/pdf_to_epub.py *), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/pdf_to_epub.py *)
 ---
 
 # PDF → EPUB
 
-Converts a PDF into an EPUB 3 file that Amazon's **Send to Kindle** accepts. The output is
-reflowable, so the reader can change the font size. Conversion is done by one bundled
-Python script. It runs fully offline: it reads the input PDF and writes one `.epub`.
+Converts a PDF into a standard EPUB 3 file for any e-reader. It also meets Amazon's stricter
+**Send to Kindle** requirements. The output is reflowable, so the reader can change the font
+size. Conversion is done by one bundled Python script. It runs fully offline: it reads the
+input PDF and writes one `.epub`.
 
 Script: `${CLAUDE_PLUGIN_ROOT}/scripts/pdf_to_epub.py`
 
@@ -49,7 +50,8 @@ Use `python3` on macOS/Linux and `python` on Windows. The examples below say `py
    and text out of order. If the layout is hopeless (heavy math, magazine layouts,
    comics, sheet music), re-run with `--mode image`.
 
-6. **Tell the user** where the file is and how to get it onto their device (below).
+6. **Tell the user** where the file is and how to get it onto their device (below). Give the
+   Kindle steps only if they mentioned a Kindle or haven't said which reader they use.
 
 ## Options
 
@@ -89,14 +91,14 @@ Use `python3` on macOS/Linux and `python` on Windows. The examples below say `py
 **Known limits:** inline math stays as plain text, and complex layouts (magazines, forms) may
 reflow imperfectly. Suggest `--mode image` for those.
 
-## Getting it onto a Kindle
+## Getting it onto an e-reader
 
-Kindles can't open `.epub` copied over USB. Send it through Amazon's Send to Kindle service,
+Kobo, Apple Books, Google Play Books and most other readers open the `.epub` directly.
+
+**Kindle** can't open `.epub` copied over USB. Send it through Amazon's Send to Kindle service,
 which converts it:
 - **Web:** amazon.com/sendtokindle, then drag the file in (up to 200 MB).
 - **App:** the Send to Kindle desktop app, or the Kindle phone app's share sheet.
 - **Email:** attach it to a message sent to the device's `@kindle.com` address (up to 50 MB). The sender
   must be on the approved list under Amazon → *Manage Your Content and Devices → Preferences →
   Personal Document Settings*.
-
-Other e-readers (Kobo, Apple Books, Google Play Books, etc.) open the `.epub` directly.

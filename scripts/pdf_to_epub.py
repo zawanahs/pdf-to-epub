@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Convert a PDF into a Kindle-friendly EPUB 3 (with EPUB 2 NCX fallback).
+"""Convert a PDF into a reflowable EPUB 3 (with EPUB 2 NCX fallback) for any e-reader,
+including Kindle via Send to Kindle.
 
 Modes:
   reflow  Extract text into resizable paragraphs. Removes running headers,
@@ -1117,7 +1118,7 @@ def main():
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-    ap = argparse.ArgumentParser(description="Convert a PDF to a Kindle-friendly EPUB.")
+    ap = argparse.ArgumentParser(description="Convert a PDF to a reflowable EPUB for any e-reader.")
     ap.add_argument("pdf", help="input .pdf (or an .epub with --peek)")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     ap.add_argument("--peek", action="store_true",

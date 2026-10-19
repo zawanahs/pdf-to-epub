@@ -1,9 +1,9 @@
 # PDF to EPUB
 
-A Claude Code plugin that turns PDFs into clean, reflowable EPUB ebooks you can read on a
-Kindle or any other e-reader. Ask Claude to "convert this PDF for my Kindle" and it runs the
-converter, checks the result, fixes the title and author if needed, and tells you how to send
-the file to your device.
+A Claude Code plugin that turns PDFs into clean, reflowable EPUB ebooks you can read on any
+e-reader: Kobo, Apple Books, Google Play Books, or a Kindle via Send to Kindle. Ask Claude to
+"convert this PDF to EPUB" and it runs the converter, checks the result, fixes the title and
+author if needed, and tells you how to get the file onto your device.
 
 It works best on text-based PDFs such as novels, non-fiction books, academic papers and
 technical documents. Scanned PDFs are detected automatically and converted page by page as
@@ -62,17 +62,17 @@ python scripts/pdf_to_epub.py book.pdf --peek               # inspect without co
 python scripts/pdf_to_epub.py --help                        # all options
 ```
 
-### Getting the file onto a Kindle
+### Getting the file onto an e-reader
 
-Kindles don't open `.epub` files copied over USB. Use Amazon's Send to Kindle instead, which
-converts the file:
+Kobo, Apple Books, Google Play Books and most other readers open the `.epub` directly.
+
+**Kindle** doesn't open `.epub` files copied over USB. Use Amazon's Send to Kindle instead,
+which converts the file:
 
 - **Web:** amazon.com/sendtokindle (files up to 200 MB).
 - **App:** the Send to Kindle desktop app, or the Kindle phone app's share sheet.
 - **Email:** send the file to your device's `@kindle.com` address (up to 50 MB). The sending
   address must be approved in your Amazon account settings.
-
-Kobo, Apple Books, Google Play Books and most other readers open the `.epub` directly.
 
 ## What this plugin runs, reads and sends
 

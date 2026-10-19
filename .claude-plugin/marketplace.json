@@ -9,7 +9,7 @@
     {
       "name": "pdf-to-epub",
       "source": "./",
-      "description": "Convert PDFs into reflowable EPUB ebooks for Kindle and other e-readers.",
+      "description": "Convert PDFs into reflowable EPUB ebooks for any e-reader, including Kindle.",
       "category": "productivity",
       "tags": ["pdf", "epub", "kindle", "ebook"]
     }
