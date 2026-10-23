@@ -1197,10 +1197,11 @@ def main():
     ap.add_argument("--peek", action="store_true",
                     help="inspect only: PDF metadata/outline/first-page text, or an EPUB's TOC and sample text")
     ap.add_argument("-o", "--output", help="output .epub path (default: next to the PDF)")
-    ap.add_argument("--mode", choices=["auto", "reflow", "image"], default="auto")
-    ap.add_argument("--title")
-    ap.add_argument("--author")
-    ap.add_argument("--lang", default="en")
+    ap.add_argument("--mode", choices=["auto", "reflow", "image"], default="auto",
+                    help="reflow text, render pages as images, or auto (image if mostly scanned)")
+    ap.add_argument("--title", help="book title (default: from PDF metadata or filename)")
+    ap.add_argument("--author", help="book author (default: from PDF metadata or filename)")
+    ap.add_argument("--lang", default="en", help="EPUB language code, e.g. en, fr (default: en)")
     ap.add_argument("--pages", help='page selection, e.g. "1-200" or "3-,10" (1-based)')
     ap.add_argument("--no-cover", action="store_true", help="don't make a cover from the first page")
     ap.add_argument("--cover", help="image file to use as cover instead of page 1")
@@ -1210,7 +1211,7 @@ def main():
     ap.add_argument("--ignore-outline", action="store_true", help="ignore PDF bookmarks; use detected headings")
     ap.add_argument("--grayscale", action="store_true", help="grayscale images (smaller file)")
     ap.add_argument("--dpi", type=int, default=150, help="page render DPI in image mode")
-    ap.add_argument("--jpeg-quality", type=int, default=80)
+    ap.add_argument("--jpeg-quality", type=int, default=80, help="JPEG quality for page images, 1-100 (default: 80)")
     ap.add_argument("--password", help="password for encrypted PDFs")
     opts = ap.parse_args()
 
