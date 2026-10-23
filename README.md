@@ -61,6 +61,7 @@ python scripts/pdf_to_epub.py book.pdf --pages 5-300 --author "Jane Austen"
 python scripts/pdf_to_epub.py scan.pdf --mode image --grayscale
 python scripts/pdf_to_epub.py book.pdf --peek               # inspect without converting
 python scripts/pdf_to_epub.py --help                        # all options
+python scripts/pdf_to_epub.py --version                     # print version
 ```
 
 ### Getting the file onto an e-reader
